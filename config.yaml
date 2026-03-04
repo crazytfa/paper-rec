@@ -94,8 +94,8 @@ topics:
           - "diffusion model"
 
     # Doubao 分级调用
-    coarse_model: "doubao-lite-4k" # 粗筛（便宜）
-    deep_model: "doubao-pro-32k" # 精析（准确）
+    coarse_model: "ep-20260303220538-xh7wl" # 粗筛（便宜）
+    deep_model: "ep-20260303220820-vhmlx" # 精析（准确）
     coarse_threshold: 0.65 # 粗筛分数阈值
     max_deep_analysis: 15 # 最多精析几篇
 
@@ -162,7 +162,7 @@ topics:
       - "photoacoustic imaging"
 
     # 生物光学量少，直接关键词过滤后精析，不需要 lite 粗筛
-    deep_model: "doubao-pro-32k"
+    deep_model: "ep-20260303220820-vhmlx"
     max_deep_analysis: 20
     context: "生物光学、荧光显微成像、自适应光学、超分辨率显微镜"
 
