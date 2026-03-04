@@ -27,7 +27,6 @@ import arxiv
 import requests
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
-from supabase import create_client
 import resend
 from volcenginesdkarkruntime import Ark
 
@@ -49,8 +48,15 @@ CFG = load_config()
 # 火山方舟客户端（Doubao）
 ARK = Ark(api_key=os.environ["ARK_API_KEY"])
 
-# Supabase 数据库客户端
-DB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+# Supabase REST API 配置（用 requests 直接调用，避免 SDK 版本冲突）
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+SUPABASE_HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=minimal",
+}
 
 # Resend 邮件客户端
 resend.api_key = os.environ.get("RESEND_API_KEY", "")
@@ -107,12 +113,19 @@ def is_already_sent(paper_id: str, cooldown_days: int) -> bool:
     """
     cutoff = (datetime.now(timezone.utc) - timedelta(days=cooldown_days)).isoformat()
     try:
-        result = (DB.table("sent_papers")
-                  .select("paper_id")
-                  .eq("paper_id", paper_id)
-                  .gte("sent_at", cutoff)
-                  .execute())
-        return len(result.data) > 0
+        # Supabase REST API：GET /rest/v1/sent_papers?paper_id=eq.xxx&sent_at=gte.xxx
+        resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/sent_papers",
+            headers={**SUPABASE_HEADERS, "Prefer": "return=representation"},
+            params={
+                "paper_id": f"eq.{paper_id}",
+                "sent_at": f"gte.{cutoff}",
+                "select": "paper_id",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return len(resp.json()) > 0
     except Exception as e:
         logger.warning(f"去重查询失败（网络问题？），默认不去重: {e}")
         return False
@@ -129,7 +142,14 @@ def mark_as_sent(papers: list, topic_id: str):
         "sent_at": datetime.now(timezone.utc).isoformat(),
     } for p in papers]
     try:
-        DB.table("sent_papers").upsert(rows).execute()
+        # Supabase REST API：POST /rest/v1/sent_papers（upsert）
+        resp = requests.post(
+            f"{SUPABASE_URL}/rest/v1/sent_papers",
+            headers={**SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates"},
+            json=rows,
+            timeout=15,
+        )
+        resp.raise_for_status()
         logger.info(f"已记录 {len(rows)} 篇到数据库（topic: {topic_id}）")
     except Exception as e:
         logger.error(f"写入数据库失败: {e}")
@@ -141,12 +161,18 @@ def save_topic_to_db(topic: dict):
     如果你只用 config.yaml 管理主题，这个函数不会被调用。
     """
     try:
-        DB.table("user_topics").upsert({
-            "topic_id": topic["id"],
-            "name": topic["name"],
-            "config_json": json.dumps(topic, ensure_ascii=False),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
+        resp = requests.post(
+            f"{SUPABASE_URL}/rest/v1/user_topics",
+            headers={**SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates"},
+            json={
+                "topic_id": topic["id"],
+                "name": topic["name"],
+                "config_json": json.dumps(topic, ensure_ascii=False),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
     except Exception as e:
         logger.warning(f"保存主题到数据库失败: {e}")
 
