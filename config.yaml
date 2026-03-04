@@ -1,0 +1,205 @@
+# ================================================================
+#  PaperBot 配置文件
+#  修改这里即可自定义所有行为，无需改动 Python 代码
+#
+#  主题管理三种方式（任选）：
+#    1. 直接改这个文件，git push 后下次自动生效
+#    2. 命令行：python manage_topics.py add "强化学习" --keywords "RL,PPO,RLHF"
+#    3. 飞书群发：/添加主题 强化学习 关键词:RL,PPO,RLHF
+# ================================================================
+
+# ----------------------------------------------------------------
+# 推送渠道配置
+# ----------------------------------------------------------------
+push:
+  email:
+    enabled: false
+    to: "your@email.com" # 改成你的邮箱，多个用列表: ["a@b.com", "c@d.com"]
+    from: "papers@yourdomain.com" # Resend 发件地址（测试可用 onboarding@resend.dev）
+
+  feishu:
+    enabled: true
+    webhook_url: "${FEISHU_WEBHOOK}" # 从环境变量读取，在 GitHub Secrets 中配置
+
+# ----------------------------------------------------------------
+# 推送时间
+# ----------------------------------------------------------------
+schedule:
+  daily_hour_beijing: 9 # 每日推送：北京时间 9 点
+  weekly_weekday: 1 # 每周推送：周几（1=周一）
+  weekly_hour_beijing: 9
+
+# ----------------------------------------------------------------
+# 去重：多少天内推送过的论文不再推荐
+# ----------------------------------------------------------------
+dedup_cooldown_days: 90
+
+# ----------------------------------------------------------------
+# 摘要语言
+# ----------------------------------------------------------------
+summary_language: "zh" # zh=中文  en=英文
+
+# ================================================================
+# 主题配置（核心部分）
+#
+# 每个主题是一条独立的采集+推送任务，可以自由增删
+# schedule: daily（每天）或 weekly（每周）
+# top_n: 最终推送几篇
+# ================================================================
+topics:
+  # ── 主题1：AI 综合 ──────────────────────────────────────────
+  - id: ai_general
+    name: "AI 综合"
+    enabled: true
+    schedule: daily
+    top_n: 8
+
+    sources:
+      arxiv:
+        enabled: true
+        categories:
+          - cs.CV # 计算机视觉
+          - cs.AI # 人工智能
+          - cs.LG # 机器学习
+          - cs.CL # NLP
+          - cs.RO # 机器人
+        max_results: 150
+
+      semantic_scholar:
+        enabled: true
+        # 只保留这些顶会/顶刊发表的论文
+        venues:
+          - "NeurIPS"
+          - "ICLR"
+          - "ICML"
+          - "CVPR"
+          - "ICCV"
+          - "ECCV"
+          - "AAAI"
+          - "ACL"
+          - "EMNLP"
+          - "IEEE Transactions on Pattern Analysis and Machine Intelligence"
+          - "Nature Machine Intelligence"
+          - "Nature Computational Science"
+
+      pubmed:
+        enabled: true
+        journals:
+          - "Nature machine intelligence"
+          - "Nature computational science"
+        keywords:
+          - "deep learning"
+          - "large language model"
+          - "foundation model"
+          - "diffusion model"
+
+    # Doubao 分级调用
+    coarse_model: "doubao-lite-4k" # 粗筛（便宜）
+    deep_model: "doubao-pro-32k" # 精析（准确）
+    coarse_threshold: 0.65 # 粗筛分数阈值
+    max_deep_analysis: 15 # 最多精析几篇
+
+    # 给 AI 的提示词上下文（用于粗筛打分）
+    context: "人工智能、深度学习、计算机视觉、大语言模型、多模态"
+
+  # ── 主题2：生物光学 ─────────────────────────────────────────
+  - id: bio_optics
+    name: "生物光学"
+    enabled: true
+    schedule: weekly
+    top_n: 10
+
+    sources:
+      pubmed:
+        enabled: true
+        journals:
+          - "Nature methods"
+          - "Nature photonics"
+          - "Nature communications"
+          - "Nature biomedical engineering"
+          - "Science"
+          - "Science advances"
+          - "Optica"
+          - "Optics letters"
+          - "Optics express"
+          - "Biomedical optics express"
+          - "Light, science & applications"
+          - "eLife"
+          - "PNAS"
+          - "Cell"
+        lookback_days: 7
+
+      arxiv:
+        enabled: true
+        categories:
+          - physics.optics
+          - physics.bio-ph
+          - q-bio.QM
+        max_results: 60
+
+    # 关键词列表（命中任意一个即入选，不需要 AI 粗筛）
+    keywords:
+      - "fluorescence imaging"
+      - "fluorescence microscopy"
+      - "STED microscopy"
+      - "PALM"
+      - "STORM"
+      - "single molecule localization"
+      - "TIRF"
+      - "adaptive optics"
+      - "wavefront correction"
+      - "deformable mirror"
+      - "Shack-Hartmann"
+      - "aberration correction"
+      - "super-resolution microscopy"
+      - "structured illumination microscopy"
+      - "expansion microscopy"
+      - "light sheet microscopy"
+      - "SPIM"
+      - "lattice light sheet"
+      - "optical coherence tomography"
+      - "multiphoton imaging"
+      - "photoacoustic imaging"
+
+    # 生物光学量少，直接关键词过滤后精析，不需要 lite 粗筛
+    deep_model: "doubao-pro-32k"
+    max_deep_analysis: 20
+    context: "生物光学、荧光显微成像、自适应光学、超分辨率显微镜"
+
+  # ── 以下是示例主题（disabled，需要时把 enabled 改为 true）──
+
+  # - id: reinforcement_learning
+  #   name: "强化学习"
+  #   enabled: false
+  #   schedule: weekly
+  #   top_n: 6
+  #   sources:
+  #     arxiv:
+  #       enabled: true
+  #       categories: [cs.LG, cs.AI, cs.RO]
+  #       max_results: 100
+  #     semantic_scholar:
+  #       enabled: false
+  #       venues: []
+  #     pubmed:
+  #       enabled: false
+  #       journals: []
+  #       keywords: []
+  #   keywords:
+  #     - "reinforcement learning"
+  #     - "RLHF"
+  #     - "PPO"
+  #     - "reward model"
+  #     - "policy gradient"
+  #   coarse_model: "doubao-lite-4k"
+  #   deep_model: "doubao-pro-32k"
+  #   coarse_threshold: 0.65
+  #   max_deep_analysis: 12
+  #   context: "强化学习、策略优化、RLHF、奖励模型"
+
+# ----------------------------------------------------------------
+# 数据库（Supabase 免费套餐）
+# ----------------------------------------------------------------
+database:
+  url: "${SUPABASE_URL}"
+  key: "${SUPABASE_KEY}"

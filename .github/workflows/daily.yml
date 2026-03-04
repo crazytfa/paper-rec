@@ -1,0 +1,79 @@
+name: PaperBot 每日论文推荐
+
+on:
+  schedule:
+    # 每天 UTC 01:00 = 北京时间 09:00 触发
+    # pipeline.py 内部会判断每个主题今天是否应该运行
+    # daily 主题每天运行，weekly 主题只在配置的星期几运行
+    - cron: '0 1 * * *'
+
+  # 手动触发（用于测试）
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: '运行哪个主题（主题ID，或 all 运行全部）'
+        required: false
+        default: 'all'
+      dry_run:
+        description: '测试模式（不实际推送）'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      # ── 定时触发 ──────────────────────────────────────────────
+      - name: 定时运行（自动判断今日主题）
+        if: github.event_name == 'schedule'
+        env:
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+        run: python pipeline.py
+
+      # ── 手动触发 ──────────────────────────────────────────────
+      - name: 手动运行
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+        run: |
+          TOPIC="${{ github.event.inputs.topic }}"
+          DRY="${{ github.event.inputs.dry_run }}"
+          CMD="python pipeline.py"
+          [ -n "$TOPIC" ] && CMD="$CMD --topic $TOPIC"
+          [ "$DRY" = "true" ] && CMD="$CMD --dry-run"
+          echo "执行命令: $CMD"
+          $CMD
+
+      # ── 上传日志（方便排查问题）──────────────────────────────
+      - name: 上传运行日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-${{ github.run_id }}
+          path: |
+            pipeline.log
+            preview_*.html
+          retention-days: 7
+          if-no-files-found: ignore
