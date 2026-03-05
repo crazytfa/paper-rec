@@ -1,73 +1,161 @@
 # ================================================================
 #  PaperBot 配置文件
-#  修改这里即可自定义所有行为，无需改动 Python 代码
-#
-#  主题管理三种方式（任选）：
-#    1. 直接改这个文件，git push 后下次自动生效
-#    2. 命令行：python manage_topics.py add "强化学习" --keywords "RL,PPO,RLHF"
-#    3. 飞书群发：/添加主题 强化学习 关键词:RL,PPO,RLHF
 # ================================================================
 
-# ----------------------------------------------------------------
-# 推送渠道配置
-# ----------------------------------------------------------------
 push:
   email:
     enabled: false
-    to: "your@email.com" # 改成你的邮箱，多个用列表: ["a@b.com", "c@d.com"]
-    from: "papers@yourdomain.com" # Resend 发件地址（测试可用 onboarding@resend.dev）
+    to: "your@email.com"
+    from: "onboarding@resend.dev"
 
   feishu:
     enabled: true
-    webhook_url: "${FEISHU_WEBHOOK}" # 从环境变量读取，在 GitHub Secrets 中配置
+    webhook_url: "${FEISHU_WEBHOOK}"
 
-# ----------------------------------------------------------------
-# 推送时间
-# ----------------------------------------------------------------
 schedule:
-  daily_hour_beijing: 9 # 每日推送：北京时间 9 点
-  weekly_weekday: 1 # 每周推送：周几（1=周一）
+  daily_hour_beijing: 9
+  weekly_weekday: 1
   weekly_hour_beijing: 9
 
-# ----------------------------------------------------------------
-# 去重：多少天内推送过的论文不再推荐
-# ----------------------------------------------------------------
 dedup_cooldown_days: 90
-
-# ----------------------------------------------------------------
-# 摘要语言
-# ----------------------------------------------------------------
-summary_language: "zh" # zh=中文  en=英文
+summary_language: "zh"
 
 # ================================================================
-# 主题配置（核心部分）
-#
-# 每个主题是一条独立的采集+推送任务，可以自由增删
-# schedule: daily（每天）或 weekly（每周）
-# top_n: 最终推送几篇
+# 知名机构列表（用于论文评分加权）
+# 在这里维护即可，不需要改代码
+# ================================================================
+prestigious_institutions:
+  universities:
+    - "MIT"
+    - "Stanford"
+    - "Carnegie Mellon"
+    - "CMU"
+    - "Berkeley"
+    - "Oxford"
+    - "Cambridge"
+    - "ETH Zurich"
+    - "Princeton"
+    - "Harvard"
+    - "Tsinghua"
+    - "Peking University"
+    - "USTC"
+    - "Zhejiang University"
+    - "Shanghai AI Lab"
+    - "EPFL"
+    - "UCL"
+    - "University of Toronto"
+    - "University of Waterloo"
+    - "NUS"
+    - "KAIST"
+    - "Cornell"
+    - "Caltech"
+    - "University of Chicago"
+    - "Johns Hopkins"
+    - "University of Pennsylvania"
+    - "Columbia"
+    - "UIUC"
+    - "University of Michigan"
+    - "University of Washington"
+    - "University of Tokyo"
+    - "Seoul National University"
+    - "National University of Singapore"
+    - "Purdue"
+    - "Georgia Tech"
+    - "University of Cambridge"
+    - "University of Oxford"
+    - "Fudan University"
+    - "Shanghai Jiao Tong University"
+    - "Renmin University"
+    - "University of Science and Technology of China"
+
+  companies:
+    - "Google DeepMind"
+    - "Google Research"
+    - "Google Brain"
+    - "OpenAI"
+    - "Anthropic"
+    - "Meta AI"
+    - "Microsoft Research"
+    - "Apple"
+    - "NVIDIA"
+    - "Adobe Research"
+    - "ByteDance"
+    - "Baidu"
+    - "Alibaba DAMO"
+    - "Tencent"
+    - "Huawei"
+    - "Samsung Research"
+    - "Amazon"
+    - "Microsoft"
+    - "Intel Labs"
+    - "IBM Research"
+    - "Salesforce Research"
+    - "Twitter / X"
+    - "Snap Research"
+    - "Spotify Research"
+    - "Bloomberg"
+    - "DJI"
+    - "Meituan"
+    - "DiDi"
+    - "JD.com"
+    - "NetEase"
+    - "Lenovo Research"
+    - "Xiaomi"
+    - "OPPO Research"
+    - "vivo Lab"
+    - "SenseTime"
+    - "Megvii"
+    - "iFlytek"
+    - "4Paradigm"
+    - "Horizon Robotics"
+
+  labs:
+    - "FAIR"
+    - "MILA"
+    - "Vector Institute"
+    - "Allen AI"
+    - "AI2"
+    - "Microsoft Research AI"
+    - "DeepMind"
+    - "OpenAI Lab"
+    - "MIT CSAIL"
+    - "Stanford HAI"
+    - "Berkeley AI Research (BAIR)"
+    - "CMU RI"
+    - "CMU MLD"
+    - "IBM Watson Research"
+    - "Rice University Lab"
+    - "Oxford Internet Institute"
+    - "Cambridge ML Lab"
+    - "Shanghai Qi Zhi Institute"
+    - "Peng Cheng Laboratory"
+    - "Zhongguancun AI Lab"
+
+# ================================================================
+# 主题配置
 # ================================================================
 topics:
-  # ── 主题1：AI 综合 ──────────────────────────────────────────
+  # ── AI 综合（每日）────────────────────────────────────────────
   - id: ai_general
     name: "AI 综合"
     enabled: true
     schedule: daily
-    top_n: 8
+    top_n: 10 # 子方向多，多推几篇
 
     sources:
       arxiv:
         enabled: true
         categories:
-          - cs.CV # 计算机视觉
-          - cs.AI # 人工智能
-          - cs.LG # 机器学习
-          - cs.CL # NLP
-          - cs.RO # 机器人
-        max_results: 150
+          - cs.CV
+          - cs.AI
+          - cs.LG
+          - cs.CL
+          - cs.RO
+          - cs.NE
+        max_results: 40 # 每个分类最多拉取数量
 
       semantic_scholar:
         enabled: true
-        # 只保留这些顶会/顶刊发表的论文
         venues:
           - "NeurIPS"
           - "ICLR"
@@ -93,18 +181,96 @@ topics:
           - "foundation model"
           - "diffusion model"
 
-    # Doubao 分级调用
-    coarse_model: "ep-20260303220538-xh7wl" # 粗筛（便宜）
-    deep_model: "ep-20260303220820-vhmlx" # 精析（准确）
-    coarse_threshold: 0.65 # 粗筛分数阈值
-    max_deep_analysis: 15 # 最多精析几篇
+    # ── 子方向关键词（用于粗筛时告知 AI 关注重点）──────────────
+    # 每个子方向都会独立评分，最终综合排序
+    subtopics:
+      - name: "图像增强与复原"
+        keywords:
+          - "image super-resolution"
+          - "image denoising"
+          - "image enhancement"
+          - "image restoration"
+          - "blind image restoration"
+          - "low-light enhancement"
+          - "deblurring"
+          - "artifact removal"
+          - "perceptual quality"
+          - "PSNR SSIM"
 
-    # 给 AI 的提示词上下文（用于粗筛打分）
-    context: "人工智能、深度学习、计算机视觉、大语言模型、多模态"
+      - name: "图像生成与扩散模型"
+        keywords:
+          - "diffusion model"
+          - "score matching"
+          - "DDPM"
+          - "stable diffusion"
+          - "text-to-image"
+          - "image generation"
+          - "generative model"
+          - "flow matching"
+          - "consistency model"
+          - "DiT"
 
-  # ── 主题2：生物光学 ─────────────────────────────────────────
+      - name: "大语言模型"
+        keywords:
+          - "large language model"
+          - "LLM"
+          - "GPT"
+          - "instruction tuning"
+          - "RLHF"
+          - "chain of thought"
+          - "in-context learning"
+          - "prompt engineering"
+          - "fine-tuning"
+          - "alignment"
+
+      - name: "多模态"
+        keywords:
+          - "multimodal"
+          - "vision language model"
+          - "VLM"
+          - "visual question answering"
+          - "image captioning"
+          - "cross-modal"
+          - "CLIP"
+          - "vision transformer"
+          - "vision-language"
+          - "MLLMs"
+
+      - name: "Agent 与自主系统"
+        keywords:
+          - "agent"
+          - "autonomous agent"
+          - "tool use"
+          - "planning"
+          - "reasoning"
+          - "embodied AI"
+          - "robotics learning"
+          - "task planning"
+          - "agentic"
+          - "self-improvement"
+
+      - name: "强化学习"
+        keywords:
+          - "reinforcement learning"
+          - "RL"
+          - "policy gradient"
+          - "PPO"
+          - "reward model"
+          - "RLHF"
+          - "offline RL"
+          - "model-based RL"
+          - "multi-agent"
+          - "Q-learning"
+
+    coarse_model: "ep-20260305154142-mq6gw" # 改成你的实际模型名
+    deep_model: "ep-20260303220820-vhmlx" # 改成你的实际模型名
+    coarse_threshold: 0.60
+    max_deep_analysis: 15
+    context: "计算机视觉（图像增强/超分/去噪）、扩散模型图像生成、大语言模型、多模态、AI Agent、强化学习"
+
+  # ── 生物光学（每周）──────────────────────────────────────────
   - id: bio_optics
-    name: "生物光学"
+    name: "生物光学与计算成像"
     enabled: true
     schedule: weekly
     top_n: 10
@@ -113,6 +279,7 @@ topics:
       pubmed:
         enabled: true
         journals:
+          - "Nature"
           - "Nature methods"
           - "Nature photonics"
           - "Nature communications"
@@ -127,6 +294,9 @@ topics:
           - "eLife"
           - "PNAS"
           - "Cell"
+          - "Optics and lasers in engineering"
+          - "IEEE Transactions on Computational Imaging"
+          - "IEEE Transactions on Image Processing"
         lookback_days: 7
 
       arxiv:
@@ -135,10 +305,11 @@ topics:
           - physics.optics
           - physics.bio-ph
           - q-bio.QM
+          - eess.IV # 图像和视频处理（计算成像相关）
         max_results: 60
 
-    # 关键词列表（命中任意一个即入选，不需要 AI 粗筛）
     keywords:
+      # 荧光成像
       - "fluorescence imaging"
       - "fluorescence microscopy"
       - "STED microscopy"
@@ -146,60 +317,53 @@ topics:
       - "STORM"
       - "single molecule localization"
       - "TIRF"
+      - "confocal microscopy"
+      - "two-photon microscopy"
+      # 自适应光学
       - "adaptive optics"
       - "wavefront correction"
       - "deformable mirror"
       - "Shack-Hartmann"
       - "aberration correction"
+      # 超分辨
       - "super-resolution microscopy"
       - "structured illumination microscopy"
       - "expansion microscopy"
+      - "MINFLUX"
+      # 光片显微
       - "light sheet microscopy"
       - "SPIM"
       - "lattice light sheet"
+      # OCT 与深层组织
       - "optical coherence tomography"
       - "multiphoton imaging"
       - "photoacoustic imaging"
+      # 计算成像（新增）
+      - "computational imaging"
+      - "computational photography"
+      - "coded aperture"
+      - "compressive sensing"
+      - "phase retrieval"
+      - "ptychography"
+      - "lensless imaging"
+      - "wavefront sensing"
+      - "holographic imaging"
+      - "digital holography"
+      - "speckle imaging"
+      - "ghost imaging"
+      - "single pixel imaging"
+      - "event camera"
+      - "neural radiance field"
+      - "implicit neural representation"
+      - "physics-informed neural"
+      - "inverse problem"
+      - "image reconstruction"
+      - "tomographic reconstruction"
 
-    # 生物光学量少，直接关键词过滤后精析，不需要 lite 粗筛
-    deep_model: "ep-20260303220820-vhmlx"
+    deep_model: "ep-20260305154142-mq6gw" # 改成你的实际模型名
     max_deep_analysis: 20
-    context: "生物光学、荧光显微成像、自适应光学、超分辨率显微镜"
+    context: "生物光学成像（荧光/自适应光学/超分辨/光片显微）、计算成像（相位恢复/压缩感知/无透镜成像/数字全息）"
 
-  # ── 以下是示例主题（disabled，需要时把 enabled 改为 true）──
-
-  # - id: reinforcement_learning
-  #   name: "强化学习"
-  #   enabled: false
-  #   schedule: weekly
-  #   top_n: 6
-  #   sources:
-  #     arxiv:
-  #       enabled: true
-  #       categories: [cs.LG, cs.AI, cs.RO]
-  #       max_results: 100
-  #     semantic_scholar:
-  #       enabled: false
-  #       venues: []
-  #     pubmed:
-  #       enabled: false
-  #       journals: []
-  #       keywords: []
-  #   keywords:
-  #     - "reinforcement learning"
-  #     - "RLHF"
-  #     - "PPO"
-  #     - "reward model"
-  #     - "policy gradient"
-  #   coarse_model: "doubao-lite-4k"
-  #   deep_model: "doubao-pro-32k"
-  #   coarse_threshold: 0.65
-  #   max_deep_analysis: 12
-  #   context: "强化学习、策略优化、RLHF、奖励模型"
-
-# ----------------------------------------------------------------
-# 数据库（Supabase 免费套餐）
-# ----------------------------------------------------------------
 database:
   url: "${SUPABASE_URL}"
   key: "${SUPABASE_KEY}"

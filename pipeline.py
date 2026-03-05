@@ -228,48 +228,60 @@ def fetch_arxiv(categories: list, max_results: int = 150,
 # 数据采集：Semantic Scholar
 # ══════════════════════════════════════════════════════════════════
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=8))
-def fetch_semantic_scholar(venues: list) -> list:
+def _s2_request_one(venue: str, min_year: int) -> list:
     """
-    从 Semantic Scholar 获取指定顶会/期刊的论文。
+    对单个 venue 发起一次 Semantic Scholar 请求，内置重试和限速处理。
 
-    Semantic Scholar 的价值在于：论文会被打上 venue 标签（如 CVPR 2024），
-    可以精确过滤"已被顶会正式收录"的论文，质量更有保证。
-    同时也收录 TPAMI、IJCV 等期刊。
+    429 处理策略：
+    - 遇到 429 时等待 retry-after 响应头指定的秒数（通常 30-60s）
+    - 若无该响应头，则指数退避：第1次等30s，第2次60s，第3次120s
+    - 最多重试 3 次，全部失败才放弃这个 venue
     """
-    papers = []
-    min_year = datetime.now().year - 1  # 只取近两年的论文
+    # 如果配置了 API Key，请求速率可提升到 10 req/s
+    api_key = os.environ.get("S2_API_KEY", "")
+    headers = {"x-api-key": api_key} if api_key else {}
 
-    for venue in venues:
-        logger.info(f"  采集 Semantic Scholar [{venue[:30]}]...")
+    params = {
+        "query": venue,
+        "fields": "title,abstract,authors,year,externalIds,venue,openAccessPdf",
+        "limit": 40,
+        "publicationTypes": "JournalArticle,Conference",
+    }
+
+    wait_times = [30, 60, 120]  # 三次重试的等待秒数
+    for attempt, wait_sec in enumerate(wait_times, 1):
         try:
             resp = requests.get(
                 "https://api.semanticscholar.org/graph/v1/paper/search",
-                params={
-                    "query": venue,
-                    "fields": "title,abstract,authors,year,externalIds,venue,openAccessPdf",
-                    "limit": 40,
-                    "publicationTypes": "JournalArticle,Conference",
-                },
+                headers=headers,
+                params=params,
                 timeout=20,
             )
+
+            if resp.status_code == 429:
+                # 优先用服务器返回的 retry-after 时间
+                retry_after = int(resp.headers.get("retry-after", wait_sec))
+                logger.warning(
+                    f"  S2 [{venue[:25]}] 限速（第{attempt}次），"
+                    f"等待 {retry_after} 秒后重试..."
+                )
+                time.sleep(retry_after)
+                continue  # 重试
+
             resp.raise_for_status()
 
+            results = []
             for item in resp.json().get("data", []):
-                # 过滤：必须有摘要，且不太旧
                 if not item.get("abstract"):
                     continue
                 if (item.get("year") or 0) < min_year:
                     continue
-
                 ext_ids = item.get("externalIds", {})
                 doi = ext_ids.get("DOI", "")
                 arxiv_id = ext_ids.get("ArXiv", "")
-                # 优先用 arXiv 链接（可直接访问全文），其次用 DOI
                 url = (f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id
                        else f"https://doi.org/{doi}" if doi else "")
-
-                papers.append(Paper(
+                results.append(Paper(
                     title=item["title"].strip(),
                     abstract=item["abstract"].strip(),
                     authors=[a["name"] for a in item.get("authors", [])],
@@ -279,9 +291,47 @@ def fetch_semantic_scholar(venues: list) -> list:
                     published_date=str(item.get("year", "")),
                     venue=venue,
                 ))
-            time.sleep(2)
+            return results  # 成功，返回结果
+
+        except requests.exceptions.HTTPError as e:
+            if attempt < len(wait_times):
+                logger.warning(f"  S2 [{venue[:25]}] HTTP错误（第{attempt}次）: {e}，等待重试")
+                time.sleep(wait_sec)
+            else:
+                logger.error(f"  S2 [{venue[:25]}] 失败（已重试{len(wait_times)}次）: {e}")
         except Exception as e:
-            logger.error(f"  Semantic Scholar [{venue[:30]}] 失败: {e}")
+            logger.error(f"  S2 [{venue[:25]}] 异常: {e}")
+            break  # 非 HTTP 错误不重试
+
+    return []
+
+
+def fetch_semantic_scholar(venues: list) -> list:
+    """
+    从 Semantic Scholar 批量采集指定顶会/期刊的论文。
+
+    限速策略：
+    - 无 API Key：每次请求后固定等待 5 秒（Semantic Scholar 免费限速约 1 req/s，
+      保守取 5s 留出余量，12 个 venue 约需 60 秒）
+    - 有 API Key（在 GitHub Secrets 中配置 S2_API_KEY）：等待 1 秒即可，
+      申请地址：https://www.semanticscholar.org/product/api
+
+    429 时会自动等待后重试（见 _s2_request_one）。
+    """
+    papers = []
+    min_year = datetime.now().year - 1
+    has_api_key = bool(os.environ.get("S2_API_KEY", ""))
+    delay = 1.0 if has_api_key else 5.0  # 有 Key 用 1s，无 Key 用 5s
+
+    for i, venue in enumerate(venues):
+        logger.info(f"  采集 S2 [{venue[:30]}] ({i+1}/{len(venues)})...")
+        results = _s2_request_one(venue, min_year)
+        papers.extend(results)
+        logger.info(f"    → {len(results)} 篇")
+
+        # 最后一个 venue 不需要等待
+        if i < len(venues) - 1:
+            time.sleep(delay)
 
     logger.info(f"  Semantic Scholar 共采集 {len(papers)} 篇")
     return papers
@@ -310,7 +360,7 @@ def fetch_pubmed(journals: list, keywords: list, days_back: int = 7) -> list:
     journal_q = " OR ".join([f'"{j}"[Journal]' for j in journals])
     keyword_q = " OR ".join([f'"{k}"[Title/Abstract]' for k in keywords])
     query = (f"({journal_q}) AND ({keyword_q}) AND "
-             f'("{date_from}"[Date - Publication] : "3000"[Date - Publication])')
+             f'("{date_from}"[Date - Publication] : "2099/12/31"[Date - Publication])')
 
     logger.info(f"  PubMed 查询：近{days_back}天，{len(journals)}个期刊，{len(keywords)}个关键词")
 
@@ -508,18 +558,22 @@ def coarse_filter(papers: list, context: str, model: str,
 DEEP_PROMPT = """请深度分析以下论文，严格按 JSON 返回，不要有任何其他内容：
 
 标题：{title}
-作者：{authors}
-来源：{venue}（{source}）
+作者与单位：{authors}
+来源期刊/会议：{venue}（{source}）
 发表日期：{date}
 摘要：{abstract}
+
+知名机构参考列表（来自这些机构的论文适当加分）：
+{institutions}
 
 返回格式：
 {{
   "summary_zh": "2-3句中文，概括这篇论文解决了什么问题、用了什么方法、取得了什么结果（≤150字）",
   "innovation": "核心创新点是什么，一句话（≤80字）",
   "method": "主要技术路线或方法，一句话",
-  "recommendation_reason": "为什么值得读，结合研究方向「{context}」说明（≤80字）",
-  "relevance_score": 0到1之间的浮点数（你对相关性的判断）
+  "institution_note": "作者单位简评：是否来自知名机构/实验室/公司，一句话（若无法判断则填"未知"）",
+  "recommendation_reason": "为什么值得读，结合研究方向「{context}」和作者单位说明（≤100字）",
+  "relevance_score": 0到1之间的浮点数，评分规则：相关性占70%权重 + 机构知名度占30%权重（顶校/顶级公司+0.1，普通机构不加减）
 }}"""
 
 
@@ -528,14 +582,24 @@ def deep_analyze(paper: Paper, model: str, context: str) -> Paper:
     用 Doubao-pro 对单篇论文做深度分析，生成结构化的中文摘要。
     只对粗筛后的精选论文调用，控制成本。
     """
+    # 构建机构列表字符串，供 AI 判断作者来源
+    inst_cfg = CFG.get("prestigious_institutions", {})
+    all_insts = (
+        inst_cfg.get("universities", []) +
+        inst_cfg.get("companies", []) +
+        inst_cfg.get("labs", [])
+    )
+    institutions_str = "、".join(all_insts[:30])  # 取前30个防止 token 过多
+
     prompt = DEEP_PROMPT.format(
         title=paper.title,
         authors=", ".join(paper.authors),
         venue=paper.venue,
         source=paper.source,
         date=paper.published_date,
-        abstract=paper.abstract[:2500],  # 摘要截断，避免超出 context window
+        abstract=paper.abstract[:2500],
         context=context,
+        institutions=institutions_str,
     )
 
     try:
@@ -552,6 +616,10 @@ def deep_analyze(paper: Paper, model: str, context: str) -> Paper:
         paper.summary_zh = result.get("summary_zh", "")
         paper.innovation = result.get("innovation", "")
         paper.recommendation_reason = result.get("recommendation_reason", "")
+        # institution_note 附加到推荐理由末尾（如果有意义的话）
+        inst_note = result.get("institution_note", "")
+        if inst_note and inst_note != "未知" and inst_note not in paper.recommendation_reason:
+            paper.recommendation_reason = f"{paper.recommendation_reason}（{inst_note}）"
         if "relevance_score" in result:
             paper.relevance_score = max(paper.relevance_score,
                                         float(result["relevance_score"]))
@@ -834,10 +902,25 @@ def run_topic(topic: dict, dry_run: bool = False):
     # ── 步骤2：去重 ──────────────────────────────────────────────
     papers = dedup(papers, cooldown)
 
-    # 如果有 keywords 字段，用关键词做前置过滤（生物光学轨道用这个）
-    kws = topic.get("keywords", [])
-    if kws and not topic.get("coarse_model"):
-        kw_lower = [k.lower() for k in kws]
+    # 关键词前置过滤：
+    # - 有 coarse_model 的主题（AI综合）：收集所有子方向关键词做粗过滤，去掉完全不相关的
+    # - 无 coarse_model 的主题（生物光学）：直接用 keywords 字段过滤
+    subtopics = topic.get("subtopics", [])
+    direct_kws = topic.get("keywords", [])
+
+    if subtopics:
+        # 把所有子方向关键词合并，做一次宽松过滤（命中任意一个子方向即保留）
+        all_sub_kws = []
+        for st in subtopics:
+            all_sub_kws.extend(st.get("keywords", []))
+        kw_lower = [k.lower() for k in all_sub_kws]
+        before = len(papers)
+        papers = [p for p in papers
+                  if any(kw in p.title.lower() or kw in p.abstract.lower()
+                         for kw in kw_lower)]
+        logger.info(f"子方向关键词前置过滤：{before} → {len(papers)} 篇")
+    elif direct_kws and not topic.get("coarse_model"):
+        kw_lower = [k.lower() for k in direct_kws]
         before = len(papers)
         papers = [p for p in papers
                   if any(kw in p.title.lower() or kw in p.abstract.lower()
