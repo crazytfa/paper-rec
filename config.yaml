@@ -152,10 +152,10 @@ topics:
           - cs.CL
           - cs.RO
           - cs.NE
-        max_results: 40 # 每个分类最多拉取数量
+        max_results: 50 # 每个分类最多拉取数量
 
       semantic_scholar:
-        enabled: true
+        enabled: false
         venues:
           - "NeurIPS"
           - "ICLR"
@@ -279,7 +279,6 @@ topics:
       pubmed:
         enabled: true
         journals:
-          - "Nature"
           - "Nature methods"
           - "Nature photonics"
           - "Nature communications"
@@ -360,7 +359,10 @@ topics:
       - "image reconstruction"
       - "tomographic reconstruction"
 
-    deep_model: "ep-20260305154142-mq6gw" # 改成你的实际模型名
+    # 生物光学关键词量少但杂，加一层粗筛确保精析的都是真正相关的
+    coarse_model: "ep-20260305154142-mq6gw" # 改成你的实际 mini/lite 模型名
+    coarse_threshold: 0.35 # 生物光学阈值稍低，避免漏掉跨学科论文
+    deep_model: "ep-20260303220820-vhmlx" # 改成你的实际模型名
     max_deep_analysis: 20
     context: "生物光学成像（荧光/自适应光学/超分辨/光片显微）、计算成像（相位恢复/压缩感知/无透镜成像/数字全息）"
 

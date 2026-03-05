@@ -89,6 +89,7 @@ class Paper:
         self.summary_zh: str = ""        # 中文摘要
         self.innovation: str = ""        # 核心创新点
         self.recommendation_reason: str = ""  # 推荐理由
+        self.conference_tag: str = ""    # 顶会标签（如 "✨ CVPR 2024"），从摘要/comment 中提取
 
     def _make_id(self) -> str:
         """
@@ -206,7 +207,7 @@ def fetch_arxiv(categories: list, max_results: int = 150,
                 # 超出时间窗口就停止（结果按时间降序排列）
                 if pub_date < cutoff:
                     break
-                papers.append(Paper(
+                p = Paper(
                     title=result.title.strip(),
                     abstract=result.summary.strip(),
                     authors=[a.name for a in result.authors],
@@ -215,7 +216,12 @@ def fetch_arxiv(categories: list, max_results: int = 150,
                     source="arxiv",
                     published_date=str(pub_date),
                     venue=cat,
-                ))
+                )
+                # arXiv comment 字段里作者经常写 "Accepted at CVPR 2024"
+                # 把 comment 拼到摘要末尾，供后续顶会标签提取使用
+                if getattr(result, "comment", None):
+                    p.abstract = p.abstract + f" [arXiv comment: {result.comment}]"
+                papers.append(p)
             time.sleep(1)  # 礼貌延迟，避免被限流
         except Exception as e:
             logger.error(f"  arXiv [{cat}] 采集失败: {e}")
@@ -616,6 +622,12 @@ def deep_analyze(paper: Paper, model: str, context: str) -> Paper:
         paper.summary_zh = result.get("summary_zh", "")
         paper.innovation = result.get("innovation", "")
         paper.recommendation_reason = result.get("recommendation_reason", "")
+
+        # 提取顶会标签
+        conf_tag = result.get("conference_tag", "").strip()
+        if conf_tag:
+            paper.conference_tag = f"✨ {conf_tag}"
+
         # institution_note 附加到推荐理由末尾（如果有意义的话）
         inst_note = result.get("institution_note", "")
         if inst_note and inst_note != "未知" and inst_note not in paper.recommendation_reason:
@@ -665,7 +677,9 @@ def push_feishu(papers: list, topic: dict, date_str: str, dry_run: bool):
                 "content": (
                     f"**{i}. {p.title}**\n"
                     f"*{', '.join(p.authors[:3])}{'等' if len(p.authors) >= 3 else ''}*"
-                    f"　`{source_badge}`{venue_info}\n\n"
+                    f"　`{source_badge}`{venue_info}"
+                    + (f"　**{p.conference_tag}**" if p.conference_tag else "") +
+                    f"\n\n"
                     f"💡 **创新点：** {p.innovation}\n\n"
                     f"📝 {p.summary_zh}\n\n"
                     f"⭐ **推荐理由：** {p.recommendation_reason}\n\n"
@@ -745,6 +759,7 @@ def push_email(papers: list, topic: dict, date_str: str, dry_run: bool):
             <span style="background:{accent}18;color:{accent};padding:1px 7px;
                           border-radius:10px;font-size:11px;">{source_label}</span>
             {f'&nbsp;·&nbsp;<span style="color:#94A3B8;font-size:11px;">{p.venue}</span>' if p.venue else ""}
+            {f'&nbsp;·&nbsp;<span style="background:#FEF3C7;color:#D97706;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;">{p.conference_tag}</span>' if p.conference_tag else ""}
           </div>
           <div style="margin-bottom:10px;">
             <span style="font-size:11px;font-weight:700;color:{accent};
