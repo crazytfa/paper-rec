@@ -362,11 +362,12 @@ def fetch_pubmed(journals: list, keywords: list, days_back: int = 7) -> list:
     api_key = os.environ.get("PUBMED_API_KEY", "")  # 可选，有则速率更高
 
     # 构建检索式
-    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y/%m/%d")
+    # 日期过滤用 reldate + datetype 参数（官方推荐方式），不写在 query 里
+    # reldate=N 表示最近 N 天，datetype=pdat 表示按发表日期过滤
+    # 这样避免了日期字段名写法导致的 400 Bad Request
     journal_q = " OR ".join([f'"{j}"[Journal]' for j in journals])
     keyword_q = " OR ".join([f'"{k}"[Title/Abstract]' for k in keywords])
-    query = (f"({journal_q}) AND ({keyword_q}) AND "
-             f'("{date_from}"[Date - Publication] : "2099/12/31"[Date - Publication])')
+    query = f"({journal_q}) AND ({keyword_q})"
 
     logger.info(f"  PubMed 查询：近{days_back}天，{len(journals)}个期刊，{len(keywords)}个关键词")
 
@@ -375,6 +376,8 @@ def fetch_pubmed(journals: list, keywords: list, days_back: int = 7) -> list:
         search = requests.get(f"{base_url}/esearch.fcgi", params={
             "db": "pubmed", "term": query,
             "retmax": 100, "retmode": "json",
+            "reldate": days_back,   # 最近 N 天
+            "datetype": "pdat",     # 按发表日期（publication date）过滤
             "api_key": api_key,
         }, timeout=20)
         search.raise_for_status()

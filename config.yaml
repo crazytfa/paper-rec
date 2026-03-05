@@ -140,7 +140,7 @@ topics:
     name: "AI 综合"
     enabled: true
     schedule: daily
-    top_n: 10 # 子方向多，多推几篇
+    top_n: 15 # 子方向多，多推几篇
 
     sources:
       arxiv:
