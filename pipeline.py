@@ -372,14 +372,18 @@ def fetch_pubmed(journals: list, keywords: list, days_back: int = 7) -> list:
     logger.info(f"  PubMed 查询：近{days_back}天，{len(journals)}个期刊，{len(keywords)}个关键词")
 
     try:
-        # 第一步：搜索，获取 PMID 列表
-        search = requests.get(f"{base_url}/esearch.fcgi", params={
+        # 构建请求参数：仅当 api_key 有效时才添加该参数
+        search_params = {
             "db": "pubmed", "term": query,
             "retmax": 100, "retmode": "json",
             "reldate": days_back,   # 最近 N 天
             "datetype": "pdat",     # 按发表日期（publication date）过滤
-            "api_key": api_key,
-        }, timeout=20)
+        }
+        if api_key:
+            search_params["api_key"] = api_key
+
+        # 第一步：搜索，获取 PMID 列表
+        search = requests.get(f"{base_url}/esearch.fcgi", params=search_params, timeout=20)
         search.raise_for_status()
         pmids = search.json().get("esearchresult", {}).get("idlist", [])
         logger.info(f"  PubMed 检索到 {len(pmids)} 篇")
@@ -388,11 +392,14 @@ def fetch_pubmed(journals: list, keywords: list, days_back: int = 7) -> list:
             return []
 
         # 第二步：获取摘要 XML（包含完整摘要文本）
-        abstract_resp = requests.get(f"{base_url}/efetch.fcgi", params={
+        efetch_params = {
             "db": "pubmed", "id": ",".join(pmids),
             "rettype": "xml", "retmode": "xml",
-            "api_key": api_key,
-        }, timeout=30)
+        }
+        if api_key:
+            efetch_params["api_key"] = api_key
+
+        abstract_resp = requests.get(f"{base_url}/efetch.fcgi", params=efetch_params, timeout=30)
 
         # 解析摘要 XML，建立 pmid -> abstract 的映射
         abstracts = {}
@@ -410,10 +417,14 @@ def fetch_pubmed(journals: list, keywords: list, days_back: int = 7) -> list:
             logger.warning(f"  PubMed XML 解析失败: {e}")
 
         # 第三步：获取元数据摘要（标题、作者、DOI、期刊名）
-        summary_resp = requests.get(f"{base_url}/esummary.fcgi", params={
+        summary_params = {
             "db": "pubmed", "id": ",".join(pmids),
-            "retmode": "json", "api_key": api_key,
-        }, timeout=30)
+            "retmode": "json",
+        }
+        if api_key:
+            summary_params["api_key"] = api_key
+
+        summary_resp = requests.get(f"{base_url}/esummary.fcgi", params=summary_params, timeout=30)
         summary_resp.raise_for_status()
         summaries = summary_resp.json().get("result", {})
 
